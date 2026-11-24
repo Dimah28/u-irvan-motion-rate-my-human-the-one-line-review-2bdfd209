@@ -34,12 +34,33 @@ OUTPUT_DIR = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
 
 def validate(review: str) -> None:
     """Enforce the competition's gate before writing: 1-200 Unicode code
-    points, at least one character that is not white space. Fail loudly
-    instead of writing an entry the gate would refuse."""
+    points, at least one character that is not white space, a single
+    line, and no leading/trailing whitespace that would change what the
+    judge reads. Fail loudly instead of writing an entry the gate
+    would refuse."""
     if not 1 <= len(review) <= 200:
         raise SystemExit(f"review is {len(review)} characters, must be 1-200")
     if not any(not ch.isspace() for ch in review):
         raise SystemExit("review must contain a non-whitespace character")
+    if "\n" in review or "\r" in review:
+        raise SystemExit("review must be a single line")
+    if review != review.strip():
+        raise SystemExit("review must not start or end with whitespace")
+    try:
+        review.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise SystemExit(f"review is not valid UTF-8: {exc}") from exc
+
+
+def verify_written(path: Path) -> None:
+    """Read back what was written and compare byte for byte: the file
+    the judge grades must be exactly REVIEW, nothing more."""
+    written = path.read_bytes()
+    if written != REVIEW.encode("utf-8"):
+        raise SystemExit(
+            f"{path} does not match the review "
+            f"({len(written)} bytes written, {len(REVIEW.encode('utf-8'))} expected)"
+        )
 
 
 def main() -> None:
@@ -47,8 +68,9 @@ def main() -> None:
     output_path = Path(OUTPUT_DIR) / "entry.txt"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # Write exactly the review: no trailing newline, the judge reads
-    # exactly the bytes in the file.
+    # exactly the bytes in the file. Then read it back and verify.
     output_path.write_text(REVIEW, encoding="utf-8")
+    verify_written(output_path)
 
 
 if __name__ == "__main__":
